@@ -194,11 +194,47 @@ function toUserDto(user) {
   };
 }
 
+// Create a signed credential envelope (contains full user + password hash).
+// This lets login.js verify credentials statelessly across Lambda invocations.
+function createCredToken(user) {
+  const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'CRED' })).toString('base64url');
+  const payload = Buffer.from(JSON.stringify({
+    id: user.id,
+    email: user.email,
+    ownerName: user.ownerName || '',
+    shopName: user.shopName || '',
+    phoneNumber: user.phoneNumber || null,
+    expiryAlertDays: user.expiryAlertDays || 7,
+    alertsEnabled: user.alertsEnabled !== false,
+    password: user.password // hashed — safe to store signed
+  })).toString('base64url');
+  const sig = crypto.createHmac('sha256', JWT_SECRET).update(`${header}.${payload}`).digest('base64url');
+  return `${header}.${payload}.${sig}`;
+}
+
+// Decode and verify a credential token; returns payload or null.
+function verifyCredToken(credToken) {
+  if (!credToken || typeof credToken !== 'string') return null;
+  const parts = credToken.split('.');
+  if (parts.length !== 3) return null;
+  const [h, p, s] = parts;
+  const expected = crypto.createHmac('sha256', JWT_SECRET).update(`${h}.${p}`).digest('base64url');
+  if (s !== expected) return null;
+  try {
+    const data = JSON.parse(Buffer.from(p, 'base64url').toString());
+    return data;
+  } catch (e) {
+    return null;
+  }
+}
+
 module.exports = {
   hashPassword,
   verifyPassword,
   createToken,
   verifyToken,
+  createCredToken,
+  verifyCredToken,
   parseBody,
   sendJson,
   getStore,

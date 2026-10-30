@@ -1,4 +1,4 @@
-const { getStore, saveStore, hashPassword, createToken, toUserDto, parseBody, sendJson } = require('../_store');
+const { getStore, saveStore, hashPassword, createToken, createCredToken, toUserDto, parseBody, sendJson } = require('../_store');
 
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -55,8 +55,10 @@ module.exports = async function handler(req, res) {
   saveStore(store);
 
   const token = createToken(newUser);
+  const credToken = createCredToken(newUser);
   return sendJson(res, 201, {
     token,
+    credToken,
     user: toUserDto(newUser)
   });
 };

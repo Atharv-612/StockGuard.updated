@@ -3,6 +3,7 @@
   const SG = (window.SG = window.SG || {});
   const TOKEN_KEY = "sg_token";
   const USER_KEY = "sg_user";
+  const CRED_KEY = "sg_cred"; // signed credential envelope for stateless login
 
   SG.logoSvg = `
     <svg viewBox="0 0 48 48" aria-hidden="true">
@@ -20,14 +21,22 @@
     user() {
       try { return JSON.parse(localStorage.getItem(USER_KEY) || "null"); } catch (e) { return null; }
     },
+    credToken() {
+      try { return localStorage.getItem(CRED_KEY); } catch (e) { return null; }
+    },
     save(res) {
       try {
         if (res.token) localStorage.setItem(TOKEN_KEY, res.token);
+        if (res.credToken) localStorage.setItem(CRED_KEY, res.credToken);
         localStorage.setItem(USER_KEY, JSON.stringify(res.user || res));
       } catch (e) { /* storage blocked */ }
     },
     clear() {
-      try { localStorage.removeItem(TOKEN_KEY); localStorage.removeItem(USER_KEY); } catch (e) { /* ignore */ }
+      try {
+        localStorage.removeItem(TOKEN_KEY);
+        localStorage.removeItem(USER_KEY);
+        localStorage.removeItem(CRED_KEY);
+      } catch (e) { /* ignore */ }
     },
     logout() {
       SG.auth.clear();

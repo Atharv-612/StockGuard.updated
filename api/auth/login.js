@@ -1,4 +1,4 @@
-const { getStore, verifyPassword, createToken, toUserDto, parseBody, sendJson } = require('../_store');
+const { getStore, verifyPassword, verifyCredToken, createToken, createCredToken, toUserDto, parseBody, sendJson } = require('../_store');
 
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -16,21 +16,45 @@ module.exports = async function handler(req, res) {
   const body = await parseBody(req);
   const email = (body.email || '').trim().toLowerCase();
   const password = body.password || '';
+  // credToken is stored in localStorage after registration and sent on login
+  // so we can verify credentials statelessly across Lambda invocations.
+  const credToken = body.credToken || null;
 
   if (!email || !password) {
     return sendJson(res, 400, { message: 'Email and password are required' });
   }
 
+  // 1. Try the in-memory store first (covers demo user + same warm Lambda).
   const store = getStore();
-  const user = store.users.find(u => (u.email || '').toLowerCase() === email);
+  const storeUser = store.users.find(u => (u.email || '').toLowerCase() === email);
 
-  if (!user || !verifyPassword(password, user.password)) {
-    return sendJson(res, 401, { message: 'Wrong email or password' });
+  if (storeUser && verifyPassword(password, storeUser.password)) {
+    const token = createToken(storeUser);
+    const newCredToken = createCredToken(storeUser);
+    return sendJson(res, 200, { token, credToken: newCredToken, user: toUserDto(storeUser) });
   }
 
-  const token = createToken(user);
-  return sendJson(res, 200, {
-    token,
-    user: toUserDto(user)
-  });
+  // 2. Fallback: verify using the signed credential token from localStorage.
+  //    This handles newly registered users whose data isn't in this Lambda's memory.
+  if (credToken) {
+    const cred = verifyCredToken(credToken);
+    if (cred && (cred.email || '').toLowerCase() === email && verifyPassword(password, cred.password)) {
+      // Reconstruct user object from credential token
+      const user = {
+        id: cred.id,
+        email: cred.email,
+        ownerName: cred.ownerName || '',
+        shopName: cred.shopName || '',
+        phoneNumber: cred.phoneNumber || null,
+        expiryAlertDays: cred.expiryAlertDays || 7,
+        alertsEnabled: cred.alertsEnabled !== false,
+        password: cred.password
+      };
+      const token = createToken(user);
+      const newCredToken = createCredToken(user);
+      return sendJson(res, 200, { token, credToken: newCredToken, user: toUserDto(user) });
+    }
+  }
+
+  return sendJson(res, 401, { message: 'Wrong email or password' });
 };
