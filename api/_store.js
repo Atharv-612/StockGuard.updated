@@ -17,11 +17,19 @@ function verifyPassword(password, stored) {
   return hash === originalHash;
 }
 
+// Embed the FULL user profile in the JWT so /api/auth/me works
+// across stateless Vercel serverless function invocations
+// (each lambda has isolated memory — only the signed token is shared).
 function createToken(user) {
   const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url');
   const payload = Buffer.from(JSON.stringify({
     id: user.id,
     email: user.email,
+    ownerName: user.ownerName || '',
+    shopName: user.shopName || '',
+    phoneNumber: user.phoneNumber || null,
+    expiryAlertDays: user.expiryAlertDays || 7,
+    alertsEnabled: user.alertsEnabled !== false,
     exp: Math.floor(Date.now() / 1000) + 86400 * 7
   })).toString('base64url');
   const sig = crypto.createHmac('sha256', JWT_SECRET).update(`${header}.${payload}`).digest('base64url');
