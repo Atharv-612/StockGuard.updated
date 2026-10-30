@@ -36,15 +36,22 @@
   };
 
   // ---------- REST ----------
+  SG.getBaseUrl = function () {
+    return window.STOCKGUARD_API_URL || localStorage.getItem("sg_api_url") || "";
+  };
+
   SG.api = async function (path, options = {}) {
     const headers = { Accept: "application/json" };
     const token = SG.auth.token();
     if (token) headers.Authorization = "Bearer " + token;
     if (options.body !== undefined) headers["Content-Type"] = "application/json";
 
+    const base = SG.getBaseUrl().replace(/\/+$/, "");
+    const url = path.startsWith("http") ? path : (base + path);
+
     let res;
     try {
-      res = await fetch(path, {
+      res = await fetch(url, {
         method: options.method || "GET",
         headers,
         body: options.body !== undefined ? JSON.stringify(options.body) : undefined,

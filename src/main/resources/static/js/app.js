@@ -95,7 +95,8 @@
       setInterval(SG.refreshCurrent, 30000);
       return;
     }
-    const es = new EventSource("/api/events?token=" + encodeURIComponent(SG.auth.token()));
+    const base = (SG.getBaseUrl ? SG.getBaseUrl() : "").replace(/\/+$/, "");
+    const es = new EventSource(base + "/api/events?token=" + encodeURIComponent(SG.auth.token()));
     const refresh = SG.debounce(() => {
       SG.refreshCurrent();
       SG.refreshAlertCount();
