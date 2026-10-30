@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>StockGuard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'%3E%3Cpath d='M24 3 6 9.5v12.3C6 33.6 13.7 42.6 24 45c10.3-2.4 18-11.4 18-23.2V9.5z' fill='%232563eb'/%3E%3Cpath d='m15.5 24.5 6 6 11.5-12.5' fill='none' stroke='%23fff' stroke-width='4.2' stroke-linecap='round'/%3E%3C/svg%3E">
+</head>
+<body>
+<div class="app" id="app">
+  <aside class="sidebar">
+    <div class="logo" id="logo"><span class="word">Stock<b>Guard</b></span></div>
+    <nav class="nav" id="nav">
+      <a href="#/dashboard" data-page="dashboard"><span class="ni">&#127968;</span>Dashboard</a>
+      <a href="#/products" data-page="products"><span class="ni">&#128230;</span>Products</a>
+      <a href="#/stock" data-page="stock"><span class="ni">&#128197;</span>Stock &amp; Expiry</a>
+      <a href="#/sales" data-page="sales"><span class="ni">&#129534;</span>Sales / Billing</a>
+      <a href="#/reports" data-page="reports"><span class="ni">&#128202;</span>Reports</a>
+      <a href="#/alerts" data-page="alerts"><span class="ni">&#128276;</span>Alerts<span class="count" id="alertCount" hidden></span></a>
+      <a href="#/settings" data-page="settings"><span class="ni">&#9881;&#65039;</span>Settings</a>
+    </nav>
+    <div class="sidebar-foot">
+      <b id="sideShop">My Shop</b>
+      <span id="sideOwner"></span>
+      <div class="slogan">Less Waste, More Profit!</div>
+    </div>
+  </aside>
+
+  <div class="main">
+    <header class="topbar">
+      <button class="btn btn-outline btn-icon menu-btn" id="menuBtn" aria-label="Menu">&#9776;</button>
+      <h1 id="pageTitle">Dashboard</h1>
+      <div class="spacer"></div>
+      <span class="live" id="live" title="Real-time updates"><span class="dot"></span><span class="txt">Connecting</span></span>
+      <div class="user-chip">
+        <div class="avatar" id="avatar">S</div>
+        <div class="who"><b id="ownerName"></b><small id="shopName"></small></div>
+      </div>
+      <button class="btn btn-ghost btn-sm" id="logoutBtn" title="Logout">Logout</button>
+    </header>
+    <main class="content" id="content"></main>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="js/api.js"></script>
+<script src="js/app.js"></script>
+<script src="js/pages/dashboard.js"></script>
+<script src="js/pages/products.js"></script>
+<script src="js/pages/stock.js"></script>
+<script src="js/pages/sales.js"></script>
+<script src="js/pages/reports.js"></script>
+<script src="js/pages/alerts.js"></script>
+<script src="js/pages/settings.js"></script>
+<script>SG.start();</script>
+</body>
+</html>
