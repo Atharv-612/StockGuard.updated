@@ -11,20 +11,19 @@ module.exports = async function handler(req, res) {
   if (!payload) return sendJson(res, 401, { message: 'Session expired' });
 
   const urlPath = req.url ? req.url.split('?')[0].replace(/^\/api\/?/, '') : '';
-  const store = getStore();
+  const store = await getStore();
   const userId = payload.id;
   const userProducts = store.products.filter(p => p.ownerId === userId && p.active !== false);
 
-  // Reports
+  // ---------- Reports ----------
+
   if (urlPath === 'reports/sales') {
     const userSales = store.sales.filter(s => s.ownerId === userId);
-    const totalRevenue = userSales.reduce((a, s) => a + s.totalPrice, 0);
-    const totalItems = userSales.reduce((a, s) => a + s.quantity, 0);
     return sendJson(res, 200, {
       from: new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10),
       to: new Date().toISOString().slice(0, 10),
-      totalRevenue,
-      totalItems,
+      totalRevenue: userSales.reduce((a, s) => a + s.totalPrice, 0),
+      totalItems: userSales.reduce((a, s) => a + s.quantity, 0),
       totalBills: userSales.length,
       daily: [],
       sales: userSales
@@ -35,8 +34,10 @@ module.exports = async function handler(req, res) {
     const userSales = store.sales.filter(s => s.ownerId === userId);
     const months = [];
     for (let m = 1; m <= 12; m++) {
-      const rev = userSales.filter(s => new Date(s.saleDate).getMonth() + 1 === m).reduce((a, s) => a + s.totalPrice, 0);
-      months.push({ year: new Date().getFullYear(), month: m, revenue: rev, items: 10 });
+      const rev = userSales
+        .filter(s => new Date(s.saleDate).getMonth() + 1 === m)
+        .reduce((a, s) => a + s.totalPrice, 0);
+      months.push({ year: new Date().getFullYear(), month: m, revenue: rev, items: 0 });
     }
     return sendJson(res, 200, months);
   }
@@ -48,7 +49,7 @@ module.exports = async function handler(req, res) {
       map[s.productName].quantity += s.quantity;
       map[s.productName].revenue += s.totalPrice;
     });
-    return sendJson(res, 200, Object.values(map).slice(0, 10));
+    return sendJson(res, 200, Object.values(map).sort((a, b) => b.quantity - a.quantity).slice(0, 10));
   }
 
   if (urlPath === 'reports/reorder') {
@@ -57,61 +58,69 @@ module.exports = async function handler(req, res) {
       name: p.name,
       category: p.category,
       currentStock: p.currentStock,
-      soldLast30Days: 15,
+      soldLast30Days: store.sales.filter(s => s.ownerId === userId && s.productId === p.id).reduce((a, s) => a + s.quantity, 0),
       avgDailySales: 0.5,
       daysOfStockLeft: p.currentStock ? Math.round(p.currentStock / 0.5) : 0,
       suggestedOrderQty: Math.max(0, 20 - p.currentStock),
-      advice: p.currentStock <= p.lowStockThreshold ? 'Order soon' : 'Stock adequate'
+      advice: p.currentStock <= (p.lowStockThreshold || 5) ? 'Order soon' : 'Stock adequate'
     }));
     return sendJson(res, 200, list);
   }
 
-  if (urlPath === 'reports/stock') {
-    return sendJson(res, 200, userProducts);
-  }
+  if (urlPath === 'reports/stock') return sendJson(res, 200, userProducts);
 
   if (urlPath === 'reports/waste') {
+    const expiredBatches = store.batches.filter(b => {
+      const isUser = userProducts.some(p => p.id === b.productId);
+      return isUser && b.status === 'DISPOSED';
+    });
     return sendJson(res, 200, {
-      disposedUnits: 4,
-      disposedValue: 140,
-      expiredUnitsOnShelf: 8,
-      expiredValueOnShelf: 280
+      disposedUnits: expiredBatches.reduce((a, b) => a + (b.quantity || 0), 0),
+      disposedValue: expiredBatches.reduce((a, b) => {
+        const p = userProducts.find(pr => pr.id === b.productId);
+        return a + (b.quantity || 0) * (p ? p.price : 0);
+      }, 0),
+      expiredUnitsOnShelf: 0,
+      expiredValueOnShelf: 0
     });
   }
+
+  // ---------- Alerts ----------
 
   if (urlPath === 'alerts/status') {
     const user = store.users.find(u => u.id === userId);
     return sendJson(res, 200, {
-      alertsEnabled: user ? user.alertsEnabled : true,
-      phoneNumber: user ? user.phoneNumber : '',
+      alertsEnabled: user ? user.alertsEnabled : (payload.alertsEnabled !== false),
+      phoneNumber: user ? user.phoneNumber : (payload.phoneNumber || ''),
       scheduleCron: '0 0 9 * * *'
     });
   }
 
   if (urlPath === 'alerts/history') {
     return sendJson(res, 200, [
-      { id: 1, trigger: 'DAILY_DIGEST', status: 'SENT', message: 'Daily expiry & stock summary', detail: '2 expired, 3 low stock', createdAt: new Date().toISOString() }
+      { id: 1, trigger: 'DAILY_DIGEST', status: 'SENT', message: 'Daily expiry & stock summary', detail: 'Summary sent', createdAt: new Date().toISOString() }
     ]);
   }
 
   if (urlPath === 'alerts/send') {
-    return sendJson(res, 200, {
-      sent: true,
-      status: 'SENT',
-      message: 'Digest triggered successfully',
-      detail: 'Summary processed'
-    });
+    return sendJson(res, 200, { sent: true, status: 'SENT', message: 'Digest triggered successfully', detail: 'Summary processed' });
   }
 
-  // Dispose batch
+  // ---------- Batch dispose ----------
+
   if (urlPath.includes('/dispose')) {
     const match = urlPath.match(/batches\/(\d+)\/dispose/);
     if (match) {
       const batchId = Number(match[1]);
       const batch = store.batches.find(b => b.id === batchId);
       if (batch) {
+        const p = store.products.find(pr => pr.id === batch.productId && pr.ownerId === userId);
+        if (p) {
+          p.currentStock = Math.max(0, (p.currentStock || 0) - (batch.quantity || 0));
+          batch.quantity = 0;
+        }
         batch.status = 'DISPOSED';
-        saveStore(store);
+        await saveStore(store);
       }
       return sendJson(res, 200, { success: true });
     }

@@ -10,9 +10,14 @@ module.exports = async function handler(req, res) {
   const payload = verifyToken(req);
   if (!payload) return sendJson(res, 401, { message: 'Session expired' });
 
-  const store = getStore();
+  const store = await getStore();
   const userId = payload.id;
-  const user = store.users.find(u => u.id === userId) || store.users[0];
+  const user = store.users.find(u => u.id === userId) || {
+    id: userId,
+    expiryAlertDays: payload.expiryAlertDays || 7,
+    alertsEnabled: payload.alertsEnabled !== false,
+    phoneNumber: payload.phoneNumber || null
+  };
 
   const today = new Date().toISOString().slice(0, 10);
   const alertDays = user.expiryAlertDays || 7;
@@ -31,17 +36,13 @@ module.exports = async function handler(req, res) {
 
   const totalAlerts = expired.length + expiringSoon.length + lowStock.length + outOfStock.length;
 
-  if (req.method === 'GET') {
-    return sendJson(res, 200, {
-      count: totalAlerts,
-      total: totalAlerts,
-      expiryAlertDays: alertDays,
-      expired,
-      expiringSoon,
-      lowStock,
-      outOfStock
-    });
-  }
-
-  return sendJson(res, 200, { sent: true, message: 'Alerts processed' });
+  return sendJson(res, 200, {
+    count: totalAlerts,
+    total: totalAlerts,
+    expiryAlertDays: alertDays,
+    expired,
+    expiringSoon,
+    lowStock,
+    outOfStock
+  });
 };

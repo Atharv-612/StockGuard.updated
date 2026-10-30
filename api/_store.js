@@ -1,9 +1,12 @@
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
+const { dbRead, dbWrite, isRedisConfigured } = require('./_db');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'stockguard-secret-key-please-use-a-long-random-string';
 const TMP_FILE = path.join(process.env.TMPDIR || process.env.TEMP || '/tmp', 'stockguard_store.json');
+
+// ---------- Password ----------
 
 function hashPassword(password, salt = crypto.randomBytes(16).toString('hex')) {
   const hash = crypto.pbkdf2Sync(password, salt, 1000, 64, 'sha512').toString('hex');
@@ -17,9 +20,10 @@ function verifyPassword(password, stored) {
   return hash === originalHash;
 }
 
+// ---------- JWT ----------
+
 // Embed the FULL user profile in the JWT so /api/auth/me works
-// across stateless Vercel serverless function invocations
-// (each lambda has isolated memory — only the signed token is shared).
+// across stateless Vercel serverless function invocations.
 function createToken(user) {
   const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url');
   const payload = Buffer.from(JSON.stringify({
@@ -54,6 +58,39 @@ function verifyToken(req) {
   }
 }
 
+// Signed credential envelope — lets login verify credentials statelessly.
+function createCredToken(user) {
+  const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'CRED' })).toString('base64url');
+  const payload = Buffer.from(JSON.stringify({
+    id: user.id,
+    email: user.email,
+    ownerName: user.ownerName || '',
+    shopName: user.shopName || '',
+    phoneNumber: user.phoneNumber || null,
+    expiryAlertDays: user.expiryAlertDays || 7,
+    alertsEnabled: user.alertsEnabled !== false,
+    password: user.password
+  })).toString('base64url');
+  const sig = crypto.createHmac('sha256', JWT_SECRET).update(`${header}.${payload}`).digest('base64url');
+  return `${header}.${payload}.${sig}`;
+}
+
+function verifyCredToken(credToken) {
+  if (!credToken || typeof credToken !== 'string') return null;
+  const parts = credToken.split('.');
+  if (parts.length !== 3) return null;
+  const [h, p, s] = parts;
+  const expected = crypto.createHmac('sha256', JWT_SECRET).update(`${h}.${p}`).digest('base64url');
+  if (s !== expected) return null;
+  try {
+    return JSON.parse(Buffer.from(p, 'base64url').toString());
+  } catch (e) {
+    return null;
+  }
+}
+
+// ---------- HTTP helpers ----------
+
 async function parseBody(req) {
   if (req.body && typeof req.body === 'object') return req.body;
   if (typeof req.body === 'string') {
@@ -76,6 +113,8 @@ function sendJson(res, statusCode, data) {
   res.setHeader('Content-Type', 'application/json');
   res.end(JSON.stringify(data));
 }
+
+// ---------- Seed data ----------
 
 function initSeedData() {
   const defaultUser = {
@@ -155,31 +194,64 @@ function initSeedData() {
   };
 }
 
-let inMemoryStore = null;
+// ---------- Store (async) ----------
 
-function getStore() {
-  if (inMemoryStore) return inMemoryStore;
+// Module-level cache — valid within a single warm Lambda invocation.
+let _cachedStore = null;
+
+/**
+ * Load the store. Priority:
+ *   1. Module-level in-memory cache (same invocation)
+ *   2. Upstash Redis (persistent, cross-Lambda)
+ *   3. /tmp file (same-Lambda warm cache fallback)
+ *   4. Seed data (first run)
+ *
+ * ALWAYS await this function.
+ */
+async function getStore() {
+  if (_cachedStore) return _cachedStore;
+
+  // Try Redis first (persistent)
+  if (isRedisConfigured()) {
+    const data = await dbRead();
+    if (data) {
+      _cachedStore = data;
+      return _cachedStore;
+    }
+    // Redis configured but empty — seed it
+    _cachedStore = initSeedData();
+    await dbWrite(_cachedStore);
+    return _cachedStore;
+  }
+
+  // Fallback: /tmp file (dev or no Redis)
   try {
     if (fs.existsSync(TMP_FILE)) {
       const raw = fs.readFileSync(TMP_FILE, 'utf8');
-      inMemoryStore = JSON.parse(raw);
-      return inMemoryStore;
+      _cachedStore = JSON.parse(raw);
+      return _cachedStore;
     }
-  } catch (e) {
-    // fallback to memory
-  }
-  inMemoryStore = initSeedData();
-  saveStore(inMemoryStore);
-  return inMemoryStore;
+  } catch (e) { /* ignore */ }
+
+  _cachedStore = initSeedData();
+  _saveTmp(_cachedStore);
+  return _cachedStore;
 }
 
-function saveStore(store) {
-  inMemoryStore = store;
-  try {
-    fs.writeFileSync(TMP_FILE, JSON.stringify(store));
-  } catch (e) {
-    // non-fatal in read-only environments
+/**
+ * Save the store. Writes to Redis (persistent) AND /tmp (local fallback).
+ * ALWAYS await this function after mutations.
+ */
+async function saveStore(store) {
+  _cachedStore = store;
+  _saveTmp(store);
+  if (isRedisConfigured()) {
+    await dbWrite(store);
   }
+}
+
+function _saveTmp(store) {
+  try { fs.writeFileSync(TMP_FILE, JSON.stringify(store)); } catch (e) { /* non-fatal */ }
 }
 
 function toUserDto(user) {
@@ -192,40 +264,6 @@ function toUserDto(user) {
     expiryAlertDays: user.expiryAlertDays || 7,
     alertsEnabled: user.alertsEnabled !== false
   };
-}
-
-// Create a signed credential envelope (contains full user + password hash).
-// This lets login.js verify credentials statelessly across Lambda invocations.
-function createCredToken(user) {
-  const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'CRED' })).toString('base64url');
-  const payload = Buffer.from(JSON.stringify({
-    id: user.id,
-    email: user.email,
-    ownerName: user.ownerName || '',
-    shopName: user.shopName || '',
-    phoneNumber: user.phoneNumber || null,
-    expiryAlertDays: user.expiryAlertDays || 7,
-    alertsEnabled: user.alertsEnabled !== false,
-    password: user.password // hashed — safe to store signed
-  })).toString('base64url');
-  const sig = crypto.createHmac('sha256', JWT_SECRET).update(`${header}.${payload}`).digest('base64url');
-  return `${header}.${payload}.${sig}`;
-}
-
-// Decode and verify a credential token; returns payload or null.
-function verifyCredToken(credToken) {
-  if (!credToken || typeof credToken !== 'string') return null;
-  const parts = credToken.split('.');
-  if (parts.length !== 3) return null;
-  const [h, p, s] = parts;
-  const expected = crypto.createHmac('sha256', JWT_SECRET).update(`${h}.${p}`).digest('base64url');
-  if (s !== expected) return null;
-  try {
-    const data = JSON.parse(Buffer.from(p, 'base64url').toString());
-    return data;
-  } catch (e) {
-    return null;
-  }
 }
 
 module.exports = {

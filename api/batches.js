@@ -10,7 +10,7 @@ module.exports = async function handler(req, res) {
   const payload = verifyToken(req);
   if (!payload) return sendJson(res, 401, { message: 'Session expired' });
 
-  const store = getStore();
+  const store = await getStore();
   const userId = payload.id;
   const userProducts = store.products.filter(p => p.ownerId === userId);
   const userProductIds = userProducts.map(p => p.id);
@@ -19,7 +19,7 @@ module.exports = async function handler(req, res) {
     const filter = (req.query && req.query.filter) || 'ALL';
     const today = new Date().toISOString().slice(0, 10);
     const user = store.users.find(u => u.id === userId);
-    const alertDays = user ? user.expiryAlertDays : 7;
+    const alertDays = user ? (user.expiryAlertDays || 7) : 7;
     const limitDate = new Date();
     limitDate.setDate(limitDate.getDate() + alertDays);
     const limitStr = limitDate.toISOString().slice(0, 10);
@@ -43,6 +43,9 @@ module.exports = async function handler(req, res) {
 
   if (req.method === 'POST') {
     const body = await parseBody(req);
+    if (!body.productId) return sendJson(res, 400, { message: 'productId is required' });
+    if (!Number(body.quantity)) return sendJson(res, 400, { message: 'quantity must be a positive number' });
+
     const newBatch = {
       id: store.nextId.batch++,
       productId: Number(body.productId),
@@ -55,9 +58,12 @@ module.exports = async function handler(req, res) {
       createdAt: new Date().toISOString()
     };
     store.batches.push(newBatch);
+
+    // Update product's current stock
     const p = store.products.find(prod => prod.id === newBatch.productId);
     if (p) p.currentStock = (p.currentStock || 0) + newBatch.quantity;
-    saveStore(store);
+
+    await saveStore(store);
     return sendJson(res, 201, newBatch);
   }
 

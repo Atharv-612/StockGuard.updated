@@ -10,8 +10,14 @@ module.exports = async function handler(req, res) {
   const payload = verifyToken(req);
   if (!payload) return sendJson(res, 401, { message: 'Session expired' });
 
-  const store = getStore();
-  const user = store.users.find(u => u.id === payload.id) || store.users[0];
+  const store = await getStore();
+  const user = store.users.find(u => u.id === payload.id) || {
+    id: payload.id,
+    shopName: payload.shopName || 'My Shop',
+    ownerName: payload.ownerName || '',
+    expiryAlertDays: payload.expiryAlertDays || 7,
+    alertsEnabled: payload.alertsEnabled !== false
+  };
   const userProducts = store.products.filter(p => p.ownerId === user.id && p.active !== false);
   const userBatches = store.batches.filter(b => userProducts.some(p => p.id === b.productId) && b.status === 'ACTIVE');
 
@@ -23,7 +29,6 @@ module.exports = async function handler(req, res) {
 
   const expiredBatches = userBatches.filter(b => b.expiryDate && b.expiryDate < today);
   const expiringSoonBatches = userBatches.filter(b => b.expiryDate && b.expiryDate >= today && b.expiryDate <= alertLimitStr);
-
   const lowStockProducts = userProducts.filter(p => p.currentStock > 0 && p.currentStock <= (p.lowStockThreshold || 5));
   const outOfStockProducts = userProducts.filter(p => p.currentStock <= 0);
 
@@ -38,22 +43,14 @@ module.exports = async function handler(req, res) {
   const todaySales = userSales.filter(s => (s.saleDate || '').startsWith(today));
   let todayRevenue = 0;
   let todayItems = 0;
-  todaySales.forEach(s => {
-    todayRevenue += s.totalPrice;
-    todayItems += s.quantity;
-  });
+  todaySales.forEach(s => { todayRevenue += s.totalPrice; todayItems += s.quantity; });
 
   let monthRevenue = 0;
   const currentMonth = today.slice(0, 7);
-  userSales.filter(s => (s.saleDate || '').startsWith(currentMonth)).forEach(s => {
-    monthRevenue += s.totalPrice;
-  });
+  userSales.filter(s => (s.saleDate || '').startsWith(currentMonth)).forEach(s => { monthRevenue += s.totalPrice; });
 
-  // Top products this week
   const topMap = {};
-  userSales.forEach(s => {
-    topMap[s.productName] = (topMap[s.productName] || 0) + s.quantity;
-  });
+  userSales.forEach(s => { topMap[s.productName] = (topMap[s.productName] || 0) + s.quantity; });
   const topProductsThisWeek = Object.entries(topMap)
     .map(([name, quantity]) => ({ name, quantity }))
     .sort((a, b) => b.quantity - a.quantity)
@@ -65,9 +62,12 @@ module.exports = async function handler(req, res) {
     d.setDate(d.getDate() - i);
     const dateStr = d.toISOString().slice(0, 10);
     const daySales = userSales.filter(s => (s.saleDate || '').startsWith(dateStr));
-    const revenue = daySales.reduce((acc, s) => acc + s.totalPrice, 0);
-    const items = daySales.reduce((acc, s) => acc + s.quantity, 0);
-    last7Days.push({ date: dateStr, revenue, items, bills: daySales.length });
+    last7Days.push({
+      date: dateStr,
+      revenue: daySales.reduce((acc, s) => acc + s.totalPrice, 0),
+      items: daySales.reduce((acc, s) => acc + s.quantity, 0),
+      bills: daySales.length
+    });
   }
 
   const alertSummary = {

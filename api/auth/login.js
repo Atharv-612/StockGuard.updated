@@ -5,27 +5,20 @@ module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
-  if (req.method === 'OPTIONS') {
-    return sendJson(res, 204, {});
-  }
-
-  if (req.method !== 'POST') {
-    return sendJson(res, 405, { message: 'Method not allowed' });
-  }
+  if (req.method === 'OPTIONS') return sendJson(res, 204, {});
+  if (req.method !== 'POST') return sendJson(res, 405, { message: 'Method not allowed' });
 
   const body = await parseBody(req);
   const email = (body.email || '').trim().toLowerCase();
   const password = body.password || '';
-  // credToken is stored in localStorage after registration and sent on login
-  // so we can verify credentials statelessly across Lambda invocations.
+  // credToken — stored in localStorage after registration, sent on re-login
+  // Enables stateless cross-Lambda credential verification.
   const credToken = body.credToken || null;
 
-  if (!email || !password) {
-    return sendJson(res, 400, { message: 'Email and password are required' });
-  }
+  if (!email || !password) return sendJson(res, 400, { message: 'Email and password are required' });
 
-  // 1. Try the in-memory store first (covers demo user + same warm Lambda).
-  const store = getStore();
+  // 1. Try persistent store (Redis or in-memory seed data)
+  const store = await getStore();
   const storeUser = store.users.find(u => (u.email || '').toLowerCase() === email);
 
   if (storeUser && verifyPassword(password, storeUser.password)) {
@@ -35,11 +28,10 @@ module.exports = async function handler(req, res) {
   }
 
   // 2. Fallback: verify using the signed credential token from localStorage.
-  //    This handles newly registered users whose data isn't in this Lambda's memory.
+  //    Handles the edge case where Redis is unavailable but registration just happened.
   if (credToken) {
     const cred = verifyCredToken(credToken);
     if (cred && (cred.email || '').toLowerCase() === email && verifyPassword(password, cred.password)) {
-      // Reconstruct user object from credential token
       const user = {
         id: cred.id,
         email: cred.email,
