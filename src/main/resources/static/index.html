@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>StockGuard - Login</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'%3E%3Cpath d='M24 3 6 9.5v12.3C6 33.6 13.7 42.6 24 45c10.3-2.4 18-11.4 18-23.2V9.5z' fill='%232563eb'/%3E%3Cpath d='m15.5 24.5 6 6 11.5-12.5' fill='none' stroke='%23fff' stroke-width='4.2' stroke-linecap='round'/%3E%3C/svg%3E">
+</head>
+<body>
+<div class="auth-page">
+  <section class="auth-hero">
+    <div class="logo" id="logo"><span class="word">Stock<b>Guard</b></span></div>
+    <div class="tagline"><span>Smart Inventory</span><span>Track Expiry</span><span>Grow Your Business</span></div>
+    <div>
+      <h1>Every expired product is <em>money lost</em>. Stop the waste.</h1>
+      <p class="lead">StockGuard is an all-in-one inventory and expiry tracker built for small shops &mdash;
+        track stock, expiry dates, low-stock items and sales, and get alerts before products expire.</p>
+    </div>
+    <div class="hero-features">
+      <div class="hero-feature"><div class="ic bg-blue">&#128230;</div><div><b>Stock Management</b><small>Real-time counts as items are added or sold</small></div></div>
+      <div class="hero-feature"><div class="ic bg-purple">&#128197;</div><div><b>Expiry Alerts</b><small>Batch numbers &amp; expiry dates for all stock</small></div></div>
+      <div class="hero-feature"><div class="ic bg-green">&#128276;</div><div><b>Smart Alerts</b><small>Daily expiry &amp; low-stock digests</small></div></div>
+      <div class="hero-feature"><div class="ic bg-orange">&#128202;</div><div><b>Sales Reports</b><small>Daily &amp; monthly history, top products</small></div></div>
+    </div>
+    <div class="hero-foot">Less Waste, More Profit!</div>
+  </section>
+
+  <section class="auth-panel">
+    <div class="auth-card">
+      <div class="tabs" role="tablist">
+        <button type="button" class="active" data-tab="login">Login</button>
+        <button type="button" data-tab="register">Register</button>
+      </div>
+
+      <form id="loginForm" novalidate>
+        <h2>Welcome back</h2>
+        <p class="sub">Log in to manage your shop.</p>
+        <div class="form-error" hidden></div>
+        <div class="field">
+          <label for="lEmail">Email</label>
+          <input class="input" id="lEmail" name="email" type="email" autocomplete="email" required>
+        </div>
+        <div class="field">
+          <label for="lPass">Password</label>
+          <input class="input" id="lPass" name="password" type="password" autocomplete="current-password" required>
+        </div>
+        <button class="btn btn-primary btn-block" type="submit">Login</button>
+        <p class="demo-hint" id="demoHint" hidden>Demo account: <b>demo@stockguard.com</b> / <b>demo123</b></p>
+      </form>
+
+      <form id="registerForm" novalidate hidden>
+        <h2>Create your shop</h2>
+        <p class="sub">Free, takes under a minute.</p>
+        <div class="form-error" hidden></div>
+        <div class="grid-2">
+          <div class="field">
+            <label for="rOwner">Your name</label>
+            <input class="input" id="rOwner" name="ownerName" required>
+          </div>
+          <div class="field">
+            <label for="rShop">Shop name</label>
+            <input class="input" id="rShop" name="shopName" required>
+          </div>
+        </div>
+        <div class="field">
+          <label for="rEmail">Email</label>
+          <input class="input" id="rEmail" name="email" type="email" autocomplete="email" required>
+        </div>
+        <div class="field">
+          <label for="rPhone">Phone number (optional)</label>
+          <input class="input" id="rPhone" name="phoneNumber" type="tel" placeholder="e.g. 9876543210">
+          <span class="hint">Contact number for your shop profile.</span>
+        </div>
+        <div class="field">
+          <label for="rPass">Password</label>
+          <input class="input" id="rPass" name="password" type="password" autocomplete="new-password" minlength="6" required>
+        </div>
+        <button class="btn btn-success btn-block" type="submit">Create account</button>
+      </form>
+    </div>
+  </section>
+</div>
+
+<script src="js/api.js"></script>
+<script src="js/auth.js"></script>
+</body>
+</html>

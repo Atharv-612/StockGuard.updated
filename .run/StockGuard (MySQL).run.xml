@@ -1,0 +1,13 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="StockGuard (MySQL)" type="Application" factoryName="Application">
+    <option name="MAIN_CLASS_NAME" value="com.stockguard.StockGuardApplication" />
+    <module name="stockguard" />
+    <envs>
+      <env name="DB_USERNAME" value="root" />
+      <env name="DB_PASSWORD" value="Alankar@31" />
+    </envs>
+    <method v="2">
+      <option name="Make" enabled="true" />
+    </method>
+  </configuration>
+</component>
