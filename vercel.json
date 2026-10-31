@@ -2,15 +2,8 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "cleanUrls": true,
   "rewrites": [
-    { "source": "/api/alerts/status", "destination": "/api/alerts/status" },
-    { "source": "/api/alerts/history", "destination": "/api/alerts/history" },
-    { "source": "/api/alerts/send", "destination": "/api/alerts/send" },
-    { "source": "/api/reports/sales", "destination": "/api/reports/sales" },
-    { "source": "/api/reports/monthly", "destination": "/api/reports/monthly" },
-    { "source": "/api/reports/top-products", "destination": "/api/reports/top-products" },
-    { "source": "/api/reports/reorder", "destination": "/api/reports/reorder" },
-    { "source": "/api/reports/stock", "destination": "/api/reports/stock" },
-    { "source": "/api/reports/waste", "destination": "/api/reports/waste" },
+    { "source": "/api/alerts/:path*", "destination": "/api/alerts" },
+    { "source": "/api/reports/:path*", "destination": "/api/reports" },
     { "source": "/api/batches/:id/dispose", "destination": "/api/batches/[id]" },
     { "source": "/api/batches/:id", "destination": "/api/batches/[id]" },
     { "source": "/api/products/:id", "destination": "/api/products" }
