@@ -33,6 +33,10 @@ module.exports = async function handler(req, res) {
   const store = await getStore();
   const userId = payload.id;
 
+  // Extract product ID if present (via rewrite /api/products?id=... or URL path)
+  const urlPath = (req.url || '').split('?')[0];
+  const prodId = Number(req.query?.id || (urlPath.match(/\/api\/products\/(\d+)/) || [])[1]);
+
   if (req.method === 'GET') {
     const list = store.products
       .filter(p => p.ownerId === userId && p.active !== false)
@@ -61,12 +65,8 @@ module.exports = async function handler(req, res) {
     return sendJson(res, 201, enrichProduct(newProd, store.batches));
   }
 
-  if (req.method === 'PUT') {
+  if (req.method === 'PUT' && prodId) {
     const body = await parseBody(req);
-    const urlPath = (req.url || '').split('?')[0];
-    const match = urlPath.match(/\/api\/products\/(\d+)/);
-    if (!match) return sendJson(res, 400, { message: 'Product ID required' });
-    const prodId = Number(match[1]);
     const prod = store.products.find(p => p.id === prodId && p.ownerId === userId);
     if (!prod) return sendJson(res, 404, { message: 'Product not found' });
     if (body.name) prod.name = body.name.trim();
@@ -78,11 +78,7 @@ module.exports = async function handler(req, res) {
     return sendJson(res, 200, enrichProduct(prod, store.batches));
   }
 
-  if (req.method === 'DELETE') {
-    const urlPath = (req.url || '').split('?')[0];
-    const match = urlPath.match(/\/api\/products\/(\d+)/);
-    if (!match) return sendJson(res, 400, { message: 'Product ID required' });
-    const prodId = Number(match[1]);
+  if (req.method === 'DELETE' && prodId) {
     const prod = store.products.find(p => p.id === prodId && p.ownerId === userId);
     if (!prod) return sendJson(res, 404, { message: 'Product not found' });
     prod.active = false;

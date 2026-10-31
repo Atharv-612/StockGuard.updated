@@ -2,10 +2,10 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "cleanUrls": true,
   "rewrites": [
-    { "source": "/api/alerts/:path*", "destination": "/api/alerts" },
-    { "source": "/api/reports/:path*", "destination": "/api/reports" },
-    { "source": "/api/batches/:id/dispose", "destination": "/api/batches/[id]" },
-    { "source": "/api/batches/:id", "destination": "/api/batches/[id]" },
-    { "source": "/api/products/:id", "destination": "/api/products" }
+    { "source": "/api/alerts/:sub", "destination": "/api/alerts?sub=:sub" },
+    { "source": "/api/reports/:sub", "destination": "/api/reports?sub=:sub" },
+    { "source": "/api/batches/:id/dispose", "destination": "/api/batches?id=:id&action=dispose" },
+    { "source": "/api/batches/:id", "destination": "/api/batches?id=:id" },
+    { "source": "/api/products/:id", "destination": "/api/products?id=:id" }
   ]
 }

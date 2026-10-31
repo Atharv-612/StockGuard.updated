@@ -25,18 +25,20 @@ module.exports = async function handler(req, res) {
   const userId = payload.id;
   const userProducts = store.products.filter(p => p.ownerId === userId && p.active !== false);
 
-  const rawPath = (req.url || '').split('?')[0].replace(/\/+$/, '');
-  const sub = rawPath.replace(/^\/api\/reports/, '') || '/';
+  // Extract sub-route from query (from rewrite: /api/reports?sub=sales) or from URL path
+  const urlPath = (req.url || '').split('?')[0].replace(/\/+$/, '');
+  const urlSub = urlPath.replace(/^\/api\/reports\/?/, '');
+  const sub = ((req.query && req.query.sub) || urlSub || '').toLowerCase();
 
-  // Parse query params
+  // Parse query params (from URL search string)
   const urlObj = new URL('http://x' + (req.url || ''));
-  const from = urlObj.searchParams.get('from') || new Date(Date.now() - 29 * 86400000).toISOString().slice(0, 10);
-  const to = urlObj.searchParams.get('to') || new Date().toISOString().slice(0, 10);
-  const year = parseInt(urlObj.searchParams.get('year') || new Date().getFullYear());
-  const days = parseInt(urlObj.searchParams.get('days') || '7');
+  const from = (req.query && req.query.from) || urlObj.searchParams.get('from') || new Date(Date.now() - 29 * 86400000).toISOString().slice(0, 10);
+  const to = (req.query && req.query.to) || urlObj.searchParams.get('to') || new Date().toISOString().slice(0, 10);
+  const year = parseInt((req.query && req.query.year) || urlObj.searchParams.get('year') || new Date().getFullYear());
+  const days = parseInt((req.query && req.query.days) || urlObj.searchParams.get('days') || '7');
 
   // GET /api/reports/sales
-  if (sub === '/sales') {
+  if (sub === 'sales') {
     const userSales = store.sales.filter(s => {
       if (s.ownerId !== userId) return false;
       const d = (s.saleDate || '').slice(0, 10);
@@ -65,63 +67,65 @@ module.exports = async function handler(req, res) {
   }
 
   // GET /api/reports/monthly
-  if (sub === '/monthly') {
+  if (sub === 'monthly') {
     const userSales = store.sales.filter(s => s.ownerId === userId);
     const months = [];
     for (let m = 1; m <= 12; m++) {
-      const ms = userSales.filter(s => { const d = new Date(s.saleDate||s.createdAt); return d.getFullYear()===year && d.getMonth()+1===m; });
-      months.push({ year, month: m, revenue: ms.reduce((a,s)=>a+s.totalPrice,0), items: ms.reduce((a,s)=>a+s.quantity,0) });
+      const ms = userSales.filter(s => { const d = new Date(s.saleDate || s.createdAt); return d.getFullYear() === year && d.getMonth() + 1 === m; });
+      months.push({ year, month: m, revenue: ms.reduce((a, s) => a + s.totalPrice, 0), items: ms.reduce((a, s) => a + s.quantity, 0) });
     }
     return sendJson(res, 200, months);
   }
 
   // GET /api/reports/top-products
-  if (sub === '/top-products') {
+  if (sub === 'top-products') {
     const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - days);
     const cutoffStr = cutoff.toISOString().slice(0, 10);
-    const salesInPeriod = store.sales.filter(s => s.ownerId === userId && (s.saleDate||'').slice(0,10) >= cutoffStr);
+    const salesInPeriod = store.sales.filter(s => s.ownerId === userId && (s.saleDate || '').slice(0, 10) >= cutoffStr);
     const map = {};
     salesInPeriod.forEach(s => {
-      if (!map[s.productName]) { const p = userProducts.find(pr=>pr.id===s.productId); map[s.productName]={productId:s.productId,name:s.productName,category:p?p.category:'General',quantity:0,revenue:0}; }
+      if (!map[s.productName]) { const p = userProducts.find(pr => pr.id === s.productId); map[s.productName] = { productId: s.productId, name: s.productName, category: p ? p.category : 'General', quantity: 0, revenue: 0 }; }
       map[s.productName].quantity += s.quantity;
       map[s.productName].revenue += s.totalPrice;
     });
-    return sendJson(res, 200, Object.values(map).sort((a,b)=>b.quantity-a.quantity).slice(0,10));
+    return sendJson(res, 200, Object.values(map).sort((a, b) => b.quantity - a.quantity).slice(0, 10));
   }
 
   // GET /api/reports/reorder
-  if (sub === '/reorder') {
-    const cutoff30 = new Date(Date.now()-30*86400000).toISOString().slice(0,10);
+  if (sub === 'reorder') {
+    const cutoff30 = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
     const list = userProducts.map(p => {
-      const sold = store.sales.filter(s=>s.ownerId===userId&&s.productId===p.id&&(s.saleDate||'').slice(0,10)>=cutoff30).reduce((a,s)=>a+s.quantity,0);
-      const avg = sold>0?Math.round(sold/30*10)/10:0;
-      const daysLeft = avg>0?Math.round(p.currentStock/avg):(p.currentStock>0?999:0);
-      return { productId:p.id, name:p.name, category:p.category, unit:p.unit, currentStock:p.currentStock,
-        soldLast30Days:sold, avgDailySales:avg, daysOfStockLeft:Math.min(daysLeft,999),
-        suggestedOrderQty:Math.max(0,(p.lowStockThreshold||5)*3-p.currentStock),
-        advice:p.currentStock<=0?'Out of stock — order now':p.currentStock<=(p.lowStockThreshold||5)?'Order soon':'Stock adequate' };
+      const sold = store.sales.filter(s => s.ownerId === userId && s.productId === p.id && (s.saleDate || '').slice(0, 10) >= cutoff30).reduce((a, s) => a + s.quantity, 0);
+      const avg = sold > 0 ? Math.round(sold / 30 * 10) / 10 : 0;
+      const daysLeft = avg > 0 ? Math.round(p.currentStock / avg) : (p.currentStock > 0 ? 999 : 0);
+      return {
+        productId: p.id, name: p.name, category: p.category, unit: p.unit, currentStock: p.currentStock,
+        soldLast30Days: sold, avgDailySales: avg, daysOfStockLeft: Math.min(daysLeft, 999),
+        suggestedOrderQty: Math.max(0, (p.lowStockThreshold || 5) * 3 - p.currentStock),
+        advice: p.currentStock <= 0 ? 'Out of stock — order now' : p.currentStock <= (p.lowStockThreshold || 5) ? 'Order soon' : 'Stock adequate'
+      };
     });
     return sendJson(res, 200, list);
   }
 
   // GET /api/reports/stock
-  if (sub === '/stock') {
+  if (sub === 'stock') {
     return sendJson(res, 200, userProducts.map(p => enrichProduct(p, store.batches)));
   }
 
   // GET /api/reports/waste
-  if (sub === '/waste') {
-    const today = new Date().toISOString().slice(0,10);
-    const disposed = store.batches.filter(b=>b.status==='DISPOSED'&&userProducts.some(p=>p.id===b.productId));
-    const disposedUnits = disposed.reduce((a,b)=>a+(b.initialQuantity-b.quantity||0),0);
-    const disposedValue = disposed.reduce((a,b)=>{ const p=userProducts.find(pr=>pr.id===b.productId); return a+(b.initialQuantity-b.quantity||0)*(p?p.price:0); },0);
-    const expOnShelf = store.batches.filter(b=>b.status==='ACTIVE'&&b.expiryDate&&b.expiryDate<today&&userProducts.some(p=>p.id===b.productId));
+  if (sub === 'waste') {
+    const today = new Date().toISOString().slice(0, 10);
+    const disposed = store.batches.filter(b => b.status === 'DISPOSED' && userProducts.some(p => p.id === b.productId));
+    const disposedUnits = disposed.reduce((a, b) => a + (b.initialQuantity - b.quantity || 0), 0);
+    const disposedValue = disposed.reduce((a, b) => { const p = userProducts.find(pr => pr.id === b.productId); return a + (b.initialQuantity - b.quantity || 0) * (p ? p.price : 0); }, 0);
+    const expOnShelf = store.batches.filter(b => b.status === 'ACTIVE' && b.expiryDate && b.expiryDate < today && userProducts.some(p => p.id === b.productId));
     return sendJson(res, 200, {
       disposedUnits, disposedValue,
-      expiredUnitsOnShelf: expOnShelf.reduce((a,b)=>a+b.quantity,0),
-      expiredValueOnShelf: expOnShelf.reduce((a,b)=>{ const p=userProducts.find(pr=>pr.id===b.productId); return a+b.quantity*(p?p.price:0); },0)
+      expiredUnitsOnShelf: expOnShelf.reduce((a, b) => a + b.quantity, 0),
+      expiredValueOnShelf: expOnShelf.reduce((a, b) => { const p = userProducts.find(pr => pr.id === b.productId); return a + b.quantity * (p ? p.price : 0); }, 0)
     });
   }
 
-  return sendJson(res, 404, { message: 'Report not found' });
+  return sendJson(res, 404, { message: `Report "${sub}" not found` });
 };

@@ -44,7 +44,18 @@
 
   loginForm.addEventListener("submit", (e) => {
     e.preventDefault();
-    submit(loginForm, "/api/auth/login");
+    // Attach the stored credToken so login works statelessly across Lambda invocations.
+    const formData = SG.formValues(loginForm);
+    const credToken = SG.auth.credToken();
+    if (credToken) formData.credToken = credToken;
+    const err = loginForm.querySelector(".form-error");
+    const btn = loginForm.querySelector("button[type=submit]");
+    err.hidden = true;
+    btn.disabled = true;
+    SG.post("/api/auth/login", formData)
+      .then((res) => { SG.auth.save(res); location.href = "app.html"; })
+      .catch((e) => { err.textContent = e.message; err.hidden = false; })
+      .finally(() => { btn.disabled = false; });
   });
   registerForm.addEventListener("submit", (e) => {
     e.preventDefault();

@@ -34,13 +34,14 @@
   };
 
   SG.setUser = function (user) {
+    if (!user) return;
     SG.user = user;
-    SG.auth.save({ user });
-    $("ownerName").textContent = user.ownerName;
-    $("shopName").textContent = user.shopName;
-    $("sideShop").textContent = user.shopName;
-    $("sideOwner").textContent = user.ownerName;
-    $("avatar").textContent = (user.ownerName || "S").trim().charAt(0).toUpperCase();
+    SG.auth.save(user.token ? user : { user });
+    if ($("ownerName")) $("ownerName").textContent = user.ownerName || "";
+    if ($("shopName")) $("shopName").textContent = user.shopName || "";
+    if ($("sideShop")) $("sideShop").textContent = user.shopName || "";
+    if ($("sideOwner")) $("sideOwner").textContent = user.ownerName || "";
+    if ($("avatar")) $("avatar").textContent = (user.ownerName || "S").trim().charAt(0).toUpperCase();
   };
 
   // ---------- Router ----------

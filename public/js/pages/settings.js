@@ -42,7 +42,10 @@
       btn.disabled = true;
       try {
         const v = SG.formValues(form);
-        SG.setUser(await SG.put("/api/auth/settings", v));
+        const updated = await SG.put("/api/auth/settings", v);
+        SG.setUser(updated);
+        const dds = el.querySelectorAll(".card dl dd");
+        if (dds && dds[1]) dds[1].textContent = updated.shopName;
         SG.toast("Settings saved", "success");
         SG.refreshAlertCount();
       } catch (ex) {

@@ -58,3 +58,4 @@ async function dbWrite(data) {
 }
 
 module.exports = { dbRead, dbWrite, isRedisConfigured };
+

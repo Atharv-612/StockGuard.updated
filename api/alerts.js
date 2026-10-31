@@ -1,4 +1,4 @@
-const { getStore, verifyToken, parseBody, sendJson } = require('./_store');
+const { getStore, verifyToken, sendJson } = require('./_store');
 
 function getExpiryStatus(expiryDate, alertDays) {
   if (!expiryDate) return { status: 'NO_EXPIRY', daysToExpiry: null };
@@ -27,9 +27,10 @@ module.exports = async function handler(req, res) {
   const user = store.users.find(u => u.id === userId);
   const alertDays = user ? (user.expiryAlertDays || 7) : (payload.expiryAlertDays || 7);
 
-  const rawPath = (req.url || '').split('?')[0].replace(/\/+$/, '');
-  // strip leading /api
-  const sub = rawPath.replace(/^\/api\/alerts/, '') || '/';
+  // Extract sub-route from query (from rewrite: /api/alerts?sub=status) or from URL path
+  const urlPath = (req.url || '').split('?')[0].replace(/\/+$/, '');
+  const urlSub = urlPath.replace(/^\/api\/alerts\/?/, '');
+  const sub = ((req.query && req.query.sub) || urlSub || '').toLowerCase();
 
   const today = new Date().toISOString().slice(0, 10);
   const limitDate = new Date();
@@ -55,7 +56,7 @@ module.exports = async function handler(req, res) {
   const totalAlerts = expired.length + expiringSoon.length + lowStock.length + outOfStock.length;
 
   // GET /api/alerts/status
-  if (sub === '/status') {
+  if (sub === 'status') {
     return sendJson(res, 200, {
       alertsEnabled: user ? user.alertsEnabled : true,
       phoneNumber: user ? (user.phoneNumber || '') : '',
@@ -64,7 +65,7 @@ module.exports = async function handler(req, res) {
   }
 
   // GET /api/alerts/history
-  if (sub === '/history') {
+  if (sub === 'history') {
     return sendJson(res, 200, [
       { id: 1, trigger: 'DAILY_DIGEST', status: 'SENT',
         message: 'Daily expiry & stock summary', detail: 'Alerts processed',
@@ -73,7 +74,7 @@ module.exports = async function handler(req, res) {
   }
 
   // POST /api/alerts/send
-  if (sub === '/send') {
+  if (sub === 'send') {
     let msg = `*StockGuard Alert Digest*\n\n`;
     if (expired.length) msg += `*Expired (${expired.length}):*\n` + expired.map(b => `- ${b.productName} (Batch ${b.batchNumber})`).join('\n') + '\n\n';
     if (expiringSoon.length) msg += `*Expiring soon (${expiringSoon.length}):*\n` + expiringSoon.map(b => `- ${b.productName} (Batch ${b.batchNumber}) expires ${b.expiryDate}`).join('\n') + '\n\n';
@@ -83,7 +84,7 @@ module.exports = async function handler(req, res) {
       detail: `${expired.length} expired, ${expiringSoon.length} expiring, ${lowStock.length} low stock` });
   }
 
-  // GET /api/alerts (main)
+  // GET /api/alerts (main summary)
   return sendJson(res, 200, {
     count: totalAlerts, total: totalAlerts,
     expiryAlertDays: alertDays,

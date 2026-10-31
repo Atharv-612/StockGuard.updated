@@ -28,15 +28,67 @@ module.exports = async function handler(req, res) {
   const user = store.users.find(u => u.id === userId);
   const alertDays = user ? (user.expiryAlertDays || 7) : (payload.expiryAlertDays || 7);
 
+  // Extract batch ID and action if present (via rewrite /api/batches?id=...&action=... or URL path)
+  const urlPath = (req.url || '').split('?')[0];
+  const batchId = Number(req.query?.id || (urlPath.match(/\/api\/batches\/(\d+)/) || [])[1]);
+  const isDispose = req.query?.action === 'dispose' || urlPath.includes('/dispose');
+
+  // ---------- POST .../dispose ----------
+  if (isDispose && batchId) {
+    const batch = store.batches.find(b => b.id === batchId);
+    if (!batch) return sendJson(res, 404, { message: 'Batch not found' });
+    const product = store.products.find(p => p.id === batch.productId && p.ownerId === userId);
+    if (!product) return sendJson(res, 403, { message: 'Not authorized' });
+
+    if (batch.status === 'ACTIVE') {
+      product.currentStock = Math.max(0, (product.currentStock || 0) - batch.quantity);
+    }
+    batch.status = 'DISPOSED';
+    batch.quantity = 0;
+    await saveStore(store);
+    return sendJson(res, 200, { success: true });
+  }
+
+  // ---------- PUT /api/batches/:id ----------
+  if (req.method === 'PUT' && batchId) {
+    const batch = store.batches.find(b => b.id === batchId);
+    if (!batch) return sendJson(res, 404, { message: 'Batch not found' });
+    const product = store.products.find(p => p.id === batch.productId && p.ownerId === userId);
+    if (!product) return sendJson(res, 403, { message: 'Not authorized' });
+
+    const body = await parseBody(req);
+    if (body.quantity !== undefined && body.quantity !== null) {
+      const diff = Number(body.quantity) - batch.quantity;
+      batch.quantity = Number(body.quantity);
+      product.currentStock = Math.max(0, (product.currentStock || 0) + diff);
+    }
+    if (body.batchNumber) batch.batchNumber = body.batchNumber;
+    if (body.expiryDate !== undefined) batch.expiryDate = body.expiryDate || null;
+    if (body.purchaseDate) batch.purchaseDate = body.purchaseDate;
+    await saveStore(store);
+    return sendJson(res, 200, batch);
+  }
+
+  // ---------- DELETE /api/batches/:id ----------
+  if (req.method === 'DELETE' && batchId) {
+    const batch = store.batches.find(b => b.id === batchId);
+    if (!batch) return sendJson(res, 404, { message: 'Batch not found' });
+    const product = store.products.find(p => p.id === batch.productId && p.ownerId === userId);
+    if (!product) return sendJson(res, 403, { message: 'Not authorized' });
+
+    if (batch.status === 'ACTIVE') {
+      product.currentStock = Math.max(0, (product.currentStock || 0) - batch.quantity);
+    }
+    store.batches = store.batches.filter(b => b.id !== batchId);
+    await saveStore(store);
+    return sendJson(res, 200, { success: true });
+  }
+
+  // ---------- GET /api/batches ----------
   if (req.method === 'GET') {
     const urlObj = new URL('http://x' + (req.url || ''));
-    const filter = urlObj.searchParams.get('filter') || 'ALL';
-    const today = new Date().toISOString().slice(0, 10);
-    const limitDate = new Date();
-    limitDate.setDate(limitDate.getDate() + alertDays);
-    const limitStr = limitDate.toISOString().slice(0, 10);
+    const filter = (req.query && req.query.filter) || urlObj.searchParams.get('filter') || 'ALL';
 
-    // Map filter names from frontend to logic
     let statusFilter = null;
     let disposedFilter = false;
     if (filter === 'EXPIRED' || filter === 'expired') statusFilter = 'EXPIRED';
@@ -51,7 +103,6 @@ module.exports = async function handler(req, res) {
       list = list.filter(b => b.status === 'ACTIVE');
     }
 
-    // Enrich with expiry info
     const enriched = list.map(b => {
       const p = userProducts.find(prod => prod.id === b.productId);
       const { status: expiryStatus, daysToExpiry } = getExpiryStatus(b.expiryDate, alertDays);
@@ -68,7 +119,6 @@ module.exports = async function handler(req, res) {
       };
     });
 
-    // Apply expiry status filter
     let filtered = enriched;
     if (statusFilter === 'EXPIRED') filtered = enriched.filter(b => b.expiryStatus === 'EXPIRED');
     else if (statusFilter === 'EXPIRING_SOON') filtered = enriched.filter(b => b.expiryStatus === 'EXPIRING_SOON');
@@ -77,6 +127,7 @@ module.exports = async function handler(req, res) {
     return sendJson(res, 200, filtered);
   }
 
+  // ---------- POST /api/batches ----------
   if (req.method === 'POST') {
     const body = await parseBody(req);
     if (!body.productId) return sendJson(res, 400, { message: 'productId is required' });
