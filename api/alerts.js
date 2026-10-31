@@ -1,4 +1,5 @@
 const { getStore, verifyToken, sendJson } = require('./_store');
+const { isRedisConfigured } = require('./_db');
 
 function getExpiryStatus(expiryDate, alertDays) {
   if (!expiryDate) return { status: 'NO_EXPIRY', daysToExpiry: null };
@@ -24,8 +25,14 @@ module.exports = async function handler(req, res) {
 
   const store = await getStore();
   const userId = payload.id;
-  const user = store.users.find(u => u.id === userId);
-  const alertDays = user ? (user.expiryAlertDays || 7) : (payload.expiryAlertDays || 7);
+  const dbUser = isRedisConfigured() ? store.users.find(u => u.id === userId) : null;
+  const user = dbUser || {
+    id: userId,
+    alertsEnabled: payload.alertsEnabled !== false,
+    phoneNumber: payload.phoneNumber || '',
+    expiryAlertDays: payload.expiryAlertDays || 7
+  };
+  const alertDays = user.expiryAlertDays || 7;
 
   // Extract sub-route from query (from rewrite: /api/alerts?sub=status) or from URL path
   const urlPath = (req.url || '').split('?')[0].replace(/\/+$/, '');

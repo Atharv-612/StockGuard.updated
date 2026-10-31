@@ -1,4 +1,5 @@
 const { getStore, verifyToken, sendJson } = require('./_store');
+const { isRedisConfigured } = require('./_db');
 
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -11,7 +12,8 @@ module.exports = async function handler(req, res) {
   if (!payload) return sendJson(res, 401, { message: 'Session expired' });
 
   const store = await getStore();
-  const user = store.users.find(u => u.id === payload.id) || {
+  const dbUser = isRedisConfigured() ? store.users.find(u => u.id === payload.id) : null;
+  const user = dbUser || {
     id: payload.id,
     shopName: payload.shopName || 'My Shop',
     ownerName: payload.ownerName || '',
