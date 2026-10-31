@@ -3,13 +3,23 @@ const { getStore, verifyToken, sendJson } = require('./_store');
 function enrichProduct(p, batches) {
   const today = new Date().toISOString().slice(0, 10);
   const activeBatches = batches.filter(b => b.productId === p.id && b.status === 'ACTIVE');
-  const sellableStock = activeBatches.filter(b => !b.expiryDate || b.expiryDate >= today).reduce((a, b) => a + b.quantity, 0);
-  const expiredStock = activeBatches.filter(b => b.expiryDate && b.expiryDate < today).reduce((a, b) => a + b.quantity, 0);
-  const nearestExpiry = activeBatches.filter(b => b.expiryDate && b.expiryDate >= today)
+  const batchSellable = activeBatches.filter(b => !b.expiryDate || b.expiryDate >= today).reduce((a, b) => a + (Number(b.quantity) || 0), 0);
+  const expiredStock = activeBatches.filter(b => b.expiryDate && b.expiryDate < today).reduce((a, b) => a + (Number(b.quantity) || 0), 0);
+  const sellableStock = activeBatches.length > 0 ? batchSellable : (Number(p.currentStock) || 0);
+
+  const nearestExpiry = activeBatches
+    .filter(b => b.expiryDate && b.expiryDate >= today)
     .sort((a, b) => a.expiryDate.localeCompare(b.expiryDate))[0]?.expiryDate || null;
-  const stockValue = sellableStock * p.price;
+  const daysToNearestExpiry = nearestExpiry ? Math.ceil((new Date(nearestExpiry) - new Date()) / 86400000) : null;
+
+  let expiryStatus = 'NO_EXPIRY';
+  if (expiredStock > 0) expiryStatus = 'EXPIRED';
+  else if (daysToNearestExpiry !== null && daysToNearestExpiry <= (p.lowStockThreshold || 7)) expiryStatus = 'EXPIRING_SOON';
+  else if (nearestExpiry) expiryStatus = 'OK';
+
+  const stockValue = sellableStock * (Number(p.price) || 0);
   let stockStatus = sellableStock <= 0 ? 'OUT_OF_STOCK' : (sellableStock <= (p.lowStockThreshold || 5) ? 'LOW_STOCK' : 'IN_STOCK');
-  return { ...p, sellableStock, expiredStock, nearestExpiry, stockValue, stockStatus };
+  return { ...p, currentStock: sellableStock, sellableStock, expiredStock, nearestExpiry, daysToNearestExpiry, expiryStatus, stockValue, stockStatus };
 }
 
 module.exports = async function handler(req, res) {
